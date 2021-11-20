@@ -1,139 +1,146 @@
 defmodule GlobalChild do
+  require Logger
   use Supervisor
   require Logger
 
+  @moduledoc """
+
+  ### Options
+
+  * `child` – Required. The child specification for the global process to start.
+  * `startup_sleep` – Optional, defaults to `0`. A duration in milliseconds to
+    sleep for before attempting to start the global child.  This is useful to
+    let the cluster form up as it allows `:global` to synchronize with other
+    nodes.
+  * `monitor_sleep` - Optional, defaults to `0`. A duration in milliseconds to
+    sleep for before monitoring the global child started on another node.  This
+    allows the global child supervisor to finish its initialization (for
+    instance `c:GenServer.init/1`) before attempting to monitor it.
+  """
+
   def child_spec(opts) do
+    # The child spec of the child dedicated supervisor is derived from the child
+    # spec of the child.  We use the same id and restart.
+
     child_child_spec = opts |> Keyword.fetch!(:child) |> Supervisor.child_spec([])
-    {:global, name} = Keyword.fetch!(opts, :name)
+
+    child_id = child_child_spec.id
+    child_restart = Map.get(child_child_spec, :restart, :permanent)
 
     %{
-      id: child_child_spec.id,
-      start:
-        {Supervisor, :start_link, [__MODULE__, {child_child_spec, {:global, name}, opts}, []]},
+      id: child_id,
+      start: {Supervisor, :start_link, [__MODULE__, {child_child_spec, opts}, []]},
+      restart: child_restart,
       type: :supervisor
     }
   end
 
+  defp log(child_id, message) do
+    Logger.debug("[#{inspect(__MODULE__)}::#{inspect(child_id)}] #{message}")
+  end
+
   @impl true
-  def init({child_child_spec, {:global, name}, opts}) do
-    maybe_sleep(opts[:sleep])
+  def init({child_child_spec, opts}) do
+    # When initializing the supervisor we try to acquire the global lock for
+    # that child.  If the lock is acquired we actually start the child.
+    # Otherwise we start a taks that will monitor the process registered on
+    # another node.
+    child_id = child_child_spec.id
 
-    # The task will use the restart configuration of the child we want to
-    # manage, and the child will be set to temporary. If the child was transient
-    # or permanent, so will be the Task, and the Task always tries to start the
-    # child, so the child is "logically" transient or permanent, but at a
-    # cluster level.
-    task_restart = Map.get(child_child_spec, :restart, :permanent)
-    child_child_spec = Map.put(child_child_spec, :restart, :temporary)
+    children =
+      if acquire_lock?(child_id) do
+        [child_child_spec]
+      else
+        [{GlobalChild.Monitor, child_id: child_id}]
+      end
 
-    parent = self()
-
-    children = [
-      Supervisor.child_spec(
-        {Task, fn -> manage_child(child_child_spec, {:global, name}, parent, opts) end},
-        restart: task_restart
-      )
-    ]
-
-    Supervisor.init(children, strategy: :one_for_all)
+    # max_restarts is set to zero because the supervisor is a surrogate for the
+    # actual child. If the child dies (be it the monitor or the actual child),
+    # so does the supervisor. If we were supervising the monitor, on restart we
+    # may now acquire the lock and supervise the actual child.
+    Supervisor.init(children, strategy: :one_for_all, max_restarts: 0)
   end
 
-  defp maybe_sleep(n) when is_integer(n) and n > 0, do: Process.sleep(n)
-  defp maybe_sleep(0), do: :ok
-  defp maybe_sleep(nil), do: :ok
-
-  defp manage_child(child_child_spec, {:global, name}, parent, opts) do
-    IO.puts("-------------------------------------------------------------------")
-
-    state = %{
-      spec: child_child_spec,
-      name: {:global, name},
-      parent: parent,
-      opts: opts,
-      # we should use a lock scoped to the child, not global for the library
-      lock: __MODULE__
-    }
-
-    Logger.warn("global child manager starting")
-    monitor(state)
+  def lock_name(child_id) do
+    {__MODULE__.Lock, child_id}
   end
 
-  defp monitor(state) do
-    case check_registered(state.name) do
-      {true, pid} ->
-        await_down(pid)
+  def maybe_sleep(n) when is_integer(n) and n > 0, do: Process.sleep(n)
+  def maybe_sleep(0), do: :ok
+  def maybe_sleep(nil), do: :ok
 
-      false ->
-        Logger.warn("#{inspect(state.name)} is not registered, starting the child")
-        start_register(state)
+  defp acquire_lock?(child_id) do
+    # We do not use the lock mechanism of :global but a name registration.  This
+    # allows to find the lock owner by name when monitoring other nodes without
+    # needing to know the registration name of the global child.
+
+    case :global.register_name(lock_name(child_id), self(), &handle_lock_conflict/3) do
+      :yes ->
+        log(child_id, "acquired lock")
+        true
+
+      :no ->
+        log(child_id, "lock already taken")
+        false
     end
   end
 
-  defp check_registered({:global, name}) do
-    :global.whereis_name(name) |> cast_whereis()
+  defp handle_lock_conflict({__MODULE__.Lock, child_id}, pid1, pid2) do
+    log(child_id, "lock conflict, stopping child")
+
+    try do
+      Supervisor.stop(pid1)
+    catch
+      :exit, {:noproc, {GenServer, :stop, _}} -> :ok
+      :exit, {{{:nodedown, _}, _}, {GenServer, :stop, _}} -> :ok
+    end
+
+    pid2
+  end
+end
+
+defmodule GlobalChild.Monitor do
+  use GenServer
+  require Logger
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts)
   end
 
-  defp cast_whereis(pid) when is_pid(pid), do: {true, pid}
-  defp cast_whereis(:undefined), do: false
-  defp cast_whereis(nil), do: false
+  def init(opts) do
+    child_id = Keyword.fetch!(opts, :child_id)
+    lock_name = GlobalChild.lock_name(child_id)
 
-  defp await_down(pid) do
-    ref = Process.monitor(pid)
-    Logger.warn("global child manager monitoring #{inspect(pid)}")
+    opts |> IO.inspect(label: "opts")
+    Logger.debug("looking for monitor for #{inspect(child_id)}")
 
-    # Once the existing server is down we will restart and try to register our
-    # child again.
-    receive do
-      {:DOWN, ^ref, :process, ^pid, reason} -> exit({:shutdown, reason})
+    case monitor_lock_owner(lock_name, opts) do
+      {:ok, ref} -> {:ok, {child_id, ref}}
+      :error -> {:stop, {:shutdown, :global_child_lock_not_found}}
     end
   end
 
-  def start_register(state) do
-    start = fn ->
-      state.spec |> IO.inspect(label: ~S[state.spec])
-      Supervisor.start_child(state.parent, state.spec)
-    end
+  defp monitor_lock_owner(lock_name, opts) do
+    # this function retrieves the lock owner supervisor, and not the actual
+    # global child.
+    case :global.whereis_name(lock_name) do
+      :undefined ->
+        :error
 
-    case under_lock(state, start) do
-      {:ok, pid} ->
-        register(pid, state)
-
-      {:error, :locked} ->
-        maybe_sleep(state.opts[:delay])
-        monitor(state)
-    end
-  end
-
-  def under_lock(state, f) do
-    state.lock |> IO.inspect(label: ~S[state.lock])
-    locked? = :global.set_lock({state.lock, make_ref()}, [node() | Node.list()], 0)
-    locked? |> IO.inspect(label: ~S[locked?])
-
-    case locked? do
-      true ->
-        result = f.()
-        # :global.del_lock(state.lock)
-        result
-
-      false ->
-        {:error, :locked}
+      pid ->
+        # If we manage to get the pid of the supervisor, we want to block until
+        # the global child has finished initialization, be cause other processes
+        # in the parent supervision tree (where GlobalChild is inserted) may
+        # expect that previous child is started and registered. So we will call
+        # the supervisor with a dummy call.
+        ref = Process.monitor(pid)
+        [_] = Supervisor.which_children(pid)
+        {:ok, ref}
     end
   end
 
-  def register(pid, %{name: {:global, name}} = state) do
-    case :global.register_name(name, pid, &__MODULE__.resolve_global/3) do
-      # When the child will exit, we will restart because the supervisor is
-      # :one_for_all. But to cover a :normal exit reason we have to monitor the
-      # child.
-      :yes -> await_down(pid)
-      # If the name could not be registered, we will exit and retry
-      :no -> exit(:normal)
-    end
-  end
-
-  def resolve_global(name, pid1, pid2) do
-    binding() |> IO.inspect(label: ~S[binding()])
-    Process.exit(pid2, {:global_name_conflict, name})
-    pid1
+  def handle_info({:DOWN, ref, :process, _pid, reason}, {child_id, ref} = state) do
+    Logger.warn("global child #{inspect(child_id)} died: #{inspect(reason)}")
+    {:stop, {:shutdown, {:gobal_child_supervisor_exit, reason}}, state}
   end
 end
