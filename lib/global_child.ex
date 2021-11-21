@@ -99,7 +99,12 @@ defmodule GlobalChild do
   end
 
   defp default_opts do
-    %{sleep: 0, debug: false}
+    env = Application.get_all_env(:global_child)
+
+    %{
+      sleep: Keyword.get(env, :sleep, 0),
+      debug: Keyword.get(env, :debug, false)
+    }
   end
 
   def maybe_sleep(n) when is_integer(n) and n > 0, do: Process.sleep(n)

@@ -4,7 +4,7 @@ defmodule GlobalChildTest do
 
   test "test starting a single process" do
     name = {:global, __MODULE__.Single}
-    sup = start_supervised!({GlobalChild, debug: true, child: {Server, name: name}})
+    sup = start_supervised!({GlobalChild, child: {Server, name: name}})
 
     assert [{Server, pid, :worker, [Server]}] = Supervisor.which_children(sup)
 
@@ -21,8 +21,8 @@ defmodule GlobalChildTest do
         {Supervisor, :start_link,
          [
            [
-             {GlobalChild, debug: true, child: {Server, id: :a, name: {:global, __MODULE__.One}}},
-             {GlobalChild, debug: true, child: {Server, id: :b, name: {:global, __MODULE__.Two}}}
+             {GlobalChild, child: {Server, id: :a, name: {:global, __MODULE__.One}}},
+             {GlobalChild, child: {Server, id: :b, name: {:global, __MODULE__.Two}}}
            ],
            [strategy: :one_for_one]
          ]}
@@ -36,7 +36,7 @@ defmodule GlobalChildTest do
   test "starting two processes under the same name locally, under different supervisors" do
     {:ok, sup1} =
       Supervisor.start_link(
-        [{GlobalChild, debug: true, child: {Server, name: {:global, __MODULE__}}}],
+        [{GlobalChild, child: {Server, name: {:global, __MODULE__}}}],
         strategy: :one_for_one
       )
 
@@ -44,7 +44,7 @@ defmodule GlobalChildTest do
 
     {:ok, sup2} =
       Supervisor.start_link(
-        [{GlobalChild, debug: true, child: {Server, name: {:global, __MODULE__}}}],
+        [{GlobalChild, child: {Server, name: {:global, __MODULE__}}}],
         strategy: :one_for_one
       )
 
