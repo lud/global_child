@@ -43,6 +43,6 @@ defmodule GlobalChild.Monitor do
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{child_id: child_id, ref: ref} = state) do
     GlobalChild.maybe_log(state, :warn, child_id, "global child is down: #{inspect(reason)}")
-    {:stop, {:shutdown, {:gobal_child_supervisor_exit, reason}}, state}
+    {:stop, reason, state}
   end
 end

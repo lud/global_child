@@ -121,7 +121,8 @@ defmodule GlobalChild do
 
   defp handle_lock_conflict({__MODULE__.Lock, _} = lock, pid1, pid2) do
     try do
-      :ok = Supervisor.stop(pid1)
+      Process.exit(pid1, :name_conflict)
+      # :ok = Supervisor.stop(pid1, :name_conflict)
     catch
       :exit, {:noproc, {GenServer, :stop, _}} ->
         :ok
