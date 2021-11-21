@@ -4,8 +4,8 @@ defmodule GlobalChild.MixProject do
   def project do
     [
       app: :global_child,
-      version: "0.1.1",
       elixir: "~> 1.12",
+      version: "0.1.1",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       docs: docs(),
