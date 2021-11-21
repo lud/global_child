@@ -2,6 +2,10 @@ defmodule GlobalChild.Test.Server do
   use GenServer
   require Logger
 
+  @moduledoc """
+  false
+  """
+
   def child_spec(opts) do
     case Keyword.pop(opts, :id) do
       {nil, opts} -> super(opts)

@@ -9,8 +9,8 @@ defmodule GlobalChild do
 
   ## Usage
 
-  To start a globally unique child, wrap its child spec with the `GlobalChild`
-  spec:
+  To start a globally unique child, wrap its child spec with a `GlobalChild`
+  child spec tuple:
 
       children = [
         # ...
@@ -29,6 +29,17 @@ defmodule GlobalChild do
     delay, the process may start on several nodes, though eventually there will
     only be one left after `:global` is synchronized.  See `:global.sync/0` if
     you need to enforce the synchronization.
+
+
+  ## Configuration
+
+  The default values for `:debug` and `:sleep` options can be set at the
+  configuration level.  Those values are pulled at runtime.
+
+      config :global_child,
+      debug: true,
+      sleep: 1500
+
   """
 
   def child_spec(opts) do
@@ -50,6 +61,7 @@ defmodule GlobalChild do
     }
   end
 
+  @doc false
   def log(level, child_id, message) do
     Logger.log(
       level,
@@ -57,6 +69,7 @@ defmodule GlobalChild do
     )
   end
 
+  @doc false
   def maybe_log(opts, level \\ :debug, child_id, message)
 
   def maybe_log(%{debug: true}, level, child_id, message) do
@@ -90,6 +103,7 @@ defmodule GlobalChild do
     Supervisor.init(children, strategy: :one_for_all, max_restarts: 0)
   end
 
+  @doc false
   def lock_name(child_id) do
     {__MODULE__.Lock, child_id}
   end
@@ -107,9 +121,9 @@ defmodule GlobalChild do
     }
   end
 
-  def maybe_sleep(n) when is_integer(n) and n > 0, do: Process.sleep(n)
-  def maybe_sleep(0), do: :ok
-  def maybe_sleep(nil), do: :ok
+  defp maybe_sleep(n) when is_integer(n) and n > 0, do: Process.sleep(n)
+  defp maybe_sleep(0), do: :ok
+  defp maybe_sleep(nil), do: :ok
 
   defp acquire_lock?(child_id, opts) do
     # We do not use the lock mechanism of :global but a name registration.  This

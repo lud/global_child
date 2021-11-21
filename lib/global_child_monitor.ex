@@ -2,10 +2,14 @@ defmodule GlobalChild.Monitor do
   use GenServer
   require Logger
 
+  @moduledoc false
+
+  @doc false
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end
 
+  @impl true
   def init(opts) do
     case monitor_lock_owner(opts) do
       {:ok, ref} -> {:ok, Map.put(opts, :ref, ref)}
@@ -36,6 +40,7 @@ defmodule GlobalChild.Monitor do
     end
   end
 
+  @impl true
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{child_id: child_id, ref: ref} = state) do
     GlobalChild.maybe_log(state, :warn, child_id, "global child is down: #{inspect(reason)}")
     {:stop, {:shutdown, {:gobal_child_supervisor_exit, reason}}, state}

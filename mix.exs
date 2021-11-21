@@ -8,6 +8,7 @@ defmodule GlobalChild.MixProject do
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      docs: docs(),
       package: package(),
       name: "GlobalChild",
       source_url: "https://github.com/lud/global_child",
@@ -24,9 +25,14 @@ defmodule GlobalChild.MixProject do
   defp deps do
     [
       {:ex_doc, "~> 0.25.5", only: :dev},
+      # {:credo, "~> 1.6", only: :dev},
       {:local_cluster, "~> 1.2", only: :test},
       {:schism, "~> 1.0", only: :test}
     ]
+  end
+
+  defp docs do
+    [main: "GlobalChild"]
   end
 
   defp package do
