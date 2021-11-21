@@ -4,15 +4,31 @@ defmodule GlobalChild do
   require Logger
 
   @moduledoc """
+  Simple utility to provide a globally unique process in a cluster of Elixir
+  nodes.
 
-  ### Options
+  ## Usage
 
-  * `child` – Required. The child specification for the global process to start.
-  * `sleep` – Optional, defaults to `0`. A duration in milliseconds to sleep for
-    before attempting to start the global child.  This is useful to let the
-    cluster form up as it allows `:global` to synchronize with other nodes.
-  * `debug` – Optional, defaults to `false`. Enables logger debug message when
+  To start a globally unique child, wrap its child spec with the `GlobalChild`
+  spec:
+
+      children = [
+        # ...
+        {GlobalChild, child: {MyApp.Worker, name: {:global, :worker}}},
+        # ...
+      ]
+
+  **Options**
+
+  * `:child` – Required. The child specification of the global process.
+  * `:debug` – Optional, defaults to `false`. Enables logger debug message when
     `true`.
+  * `:sleep` – Optional, defaults to `0`. A duration in milliseconds to sleep
+    for before attempting to start the global child.  This is useful to let the
+    cluster form and allow `:global` to synchronize with other nodes.  Without a
+    delay, the process may start on several nodes, though eventually there will
+    only be one left after `:global` is synchronized.  See `:global.sync/0` if
+    you need to enforce the synchronization.
   """
 
   def child_spec(opts) do
@@ -34,7 +50,7 @@ defmodule GlobalChild do
     }
   end
 
-  defp log(level, child_id, message) do
+  def log(level, child_id, message) do
     Logger.log(
       level,
       "[#{inspect(__MODULE__)} #{inspect(node())} #{inspect(child_id)}] #{message}"
@@ -94,24 +110,33 @@ defmodule GlobalChild do
     # We do not use the lock mechanism of :global but a name registration.  This
     # allows to find the lock owner by name when monitoring other nodes without
     # needing to know the registration name of the global child.
+    lock = lock_name(child_id)
+    maybe_log(opts, child_id, "acquiring lock #{inspect(lock)}")
 
-    case :global.register_name(lock_name(child_id), self(), &handle_lock_conflict/3) do
+    case :global.register_name(lock, self(), &handle_lock_conflict/3) do
       :yes ->
         maybe_log(opts, child_id, "acquired lock")
         true
 
       :no ->
-        maybe_log(opts, child_id, "lock already taken")
+        maybe_log(opts, child_id, "remote child exists")
         false
     end
   end
 
-  defp handle_lock_conflict({__MODULE__.Lock, _child_id}, pid1, pid2) do
+  defp handle_lock_conflict({__MODULE__.Lock, _} = lock, pid1, pid2) do
     try do
-      Supervisor.stop(pid1)
+      :ok = Supervisor.stop(pid1)
     catch
-      :exit, {:noproc, {GenServer, :stop, _}} -> :ok
-      :exit, {{{:nodedown, _}, _}, {GenServer, :stop, _}} -> :ok
+      :exit, {:noproc, {GenServer, :stop, _}} ->
+        :ok
+
+      :exit, {{{:nodedown, _}, _}, {GenServer, :stop, _}} ->
+        :ok
+
+      kind, reason ->
+        "#{inspect(kind)} in GlobalChild.handle_lock_conflict(#{inspect(lock)}, #{inspect(pid1)}, #{inspect(pid2)}): #{inspect(reason)}"
+        |> Logger.error()
     end
 
     pid2
