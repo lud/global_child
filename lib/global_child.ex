@@ -3,43 +3,19 @@ defmodule GlobalChild do
   use Supervisor
   require Logger
 
+  @readme __ENV__.file
+          |> Path.dirname()
+          |> Path.dirname()
+          |> Path.join("README.md")
+          |> File.read!()
+          |> String.split("<!-- moduledoc_start -->", parts: 2, trim: true)
+          |> Enum.at(1)
+
   @moduledoc """
   Simple utility to provide a globally unique process in a cluster of Elixir
   nodes.
 
-  ## Usage
-
-  To start a globally unique child, wrap its child spec with a `GlobalChild`
-  child spec tuple:
-
-      children = [
-        # ...
-        {GlobalChild, child: {MyApp.Worker, name: {:global, :worker}}},
-        # ...
-      ]
-
-  **Options**
-
-  * `:child` – Required. The child specification of the global process.
-  * `:debug` – Optional, defaults to `false`. Enables logger debug message when
-    `true`.
-  * `:sleep` – Optional, defaults to `0`. A duration in milliseconds to sleep
-    for before attempting to start the global child.  This is useful to let the
-    cluster form and allow `:global` to synchronize with other nodes.  Without a
-    delay, the process may start on several nodes, though eventually there will
-    only be one left after `:global` is synchronized.  See `:global.sync/0` if
-    you need to enforce the synchronization.
-
-
-  ## Configuration
-
-  The default values for `:debug` and `:sleep` options can be set at the
-  configuration level.  Those values are pulled at runtime.
-
-      config :global_child,
-      debug: true,
-      sleep: 1500
-
+  #{@readme}
   """
 
   def child_spec(opts) do
