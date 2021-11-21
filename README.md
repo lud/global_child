@@ -1,6 +1,7 @@
 # GlobalChild
 
-**TODO: Add description**
+A simple cluster-wide singleton utility for Elixir node, heavily inspired from
+[Highlander](https://github.com/derekkraan/highlander).
 
 ## Installation
 
