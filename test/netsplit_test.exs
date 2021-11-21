@@ -46,7 +46,7 @@ defmodule GlobalChild.NetSplitTest do
     assert pid2 == rpc(node2, :global, :whereis_name, [gname])
 
     # Now we heal the nodes and there should be only one global child left
-    Schism.heal(nodes)
+    heal_sync(nodes)
 
     # for some reason, global synchronization is slow with those tests. On my
     # dev machine, sleeping for 1000 is never enough for the name conflict to be
@@ -94,9 +94,7 @@ defmodule GlobalChild.NetSplitTest do
     assert pid1 == rpc(in_left, :global, :whereis_name, [gname])
     assert pid2 == rpc(in_right, :global, :whereis_name, [gname])
 
-    Schism.heal(nodes)
-
-    assert Enum.all?(rpc_all(nodes, :global, :sync, []), &(&1 == :ok))
+    heal_sync(nodes)
 
     global_child = :global.whereis_name(gname)
     assert global_child == rpc(in_left, :global, :whereis_name, [gname])
@@ -136,5 +134,10 @@ defmodule GlobalChild.NetSplitTest do
     case rpc(node, Server, :get_info, [name]) do
       {pid, _} -> pid
     end
+  end
+
+  defp heal_sync(nodes) do
+    Schism.heal(nodes)
+    assert Enum.all?(rpc_all(nodes, :global, :sync, []), &(&1 == :ok))
   end
 end

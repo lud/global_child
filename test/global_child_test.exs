@@ -4,9 +4,9 @@ defmodule GlobalChildTest do
 
   test "test starting a single process" do
     name = {:global, __MODULE__.Single}
-    sup = start_supervised!({GlobalChild, child: {Server, name: name}})
+    gc_parent = start_supervised!({GlobalChild, child: {Server, name: name}})
 
-    assert [{Server, pid, :worker, [Server]}] = Supervisor.which_children(sup)
+    assert {:actual, pid} = GlobalChild.status(gc_parent)
 
     this_node = node()
     assert {^pid, ^this_node} = Server.get_info(pid)
@@ -59,18 +59,20 @@ defmodule GlobalChildTest do
 
   # finds which kind of child were started under a global child supervisor,
   # itself started under a supervisor.
-  defp child_child_kind(gc_sup_sup) do
-    case Supervisor.which_children(gc_sup_sup) do
-      [{_id, pid, :supervisor, [Supervisor]}] -> child_kind(pid)
+  defp child_child_kind(gc_parent_parent) do
+    case Supervisor.which_children(gc_parent_parent) do
+      [{_id, pid, :supervisor, [GenServer]}] = x ->
+        Process.alive?(pid) |> IO.inspect(label: "Process.alive?(pid)")
+        child_kind(pid)
     end
   end
 
   # finds which kind of child were started under a global child supervisor
   # (GlobalChild module IS the supervisor)
-  defp child_kind(gc_sup) do
-    case Supervisor.which_children(gc_sup) do
-      [{Server, _, :worker, [Server]}] -> :actual
-      [{GlobalChild.Monitor, _, :worker, [GlobalChild.Monitor]}] -> :monitor
+  defp child_kind(gc_parent) do
+    case GlobalChild.status(gc_parent) do
+      {:actual, _} -> :actual
+      :monitor -> :monitor
     end
   end
 end
