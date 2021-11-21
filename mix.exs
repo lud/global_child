@@ -5,7 +5,7 @@ defmodule GlobalChild.MixProject do
     [
       app: :global_child,
       elixir: "~> 1.12",
-      version: "0.1.1",
+      version: "0.2.0",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       docs: docs(),
@@ -24,7 +24,7 @@ defmodule GlobalChild.MixProject do
 
   defp deps do
     [
-      {:ex_doc, "~> 0.25.5", only: :dev},
+      {:ex_doc, "~> 0.25.5", only: :dev, runtime: false},
       # {:credo, "~> 1.6", only: :dev},
       {:local_cluster, "~> 1.2", only: :test},
       {:schism, "~> 1.0", only: :test}

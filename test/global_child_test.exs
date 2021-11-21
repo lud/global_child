@@ -1,5 +1,6 @@
 defmodule GlobalChildTest do
   use ExUnit.Case
+  import GlobalChild.TestTools
   alias GlobalChild.Test.Server
 
   test "test starting a single process" do
@@ -55,24 +56,5 @@ defmodule GlobalChildTest do
     GenServer.stop(sup1)
     Process.sleep(100)
     assert child_child_kind(sup2) == :actual
-  end
-
-  # finds which kind of child were started under a global child supervisor,
-  # itself started under a supervisor.
-  defp child_child_kind(gc_parent_parent) do
-    case Supervisor.which_children(gc_parent_parent) do
-      [{_id, pid, :supervisor, [GenServer]}] = x ->
-        Process.alive?(pid) |> IO.inspect(label: "Process.alive?(pid)")
-        child_kind(pid)
-    end
-  end
-
-  # finds which kind of child were started under a global child supervisor
-  # (GlobalChild module IS the supervisor)
-  defp child_kind(gc_parent) do
-    case GlobalChild.status(gc_parent) do
-      {:actual, _} -> :actual
-      :monitor -> :monitor
-    end
   end
 end

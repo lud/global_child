@@ -1,7 +1,13 @@
 # GlobalChild
 
-A simple cluster-wide singleton utility for Elixir node, heavily inspired from
-[Highlander](https://github.com/derekkraan/highlander).
+This library is a clone of
+[Highlander](https://github.com/derekkraan/highlander), an easy-to-use cluster
+singleton utility for Elixir clusters.
+
+It contains minor tweaks from the original implementation, notably the support
+for transient and temporary children.
+
+
 
 ## Installation
 

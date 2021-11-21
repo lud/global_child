@@ -1,6 +1,7 @@
 defmodule GlobalChild.NetSplitTest do
-  use ExUnit.Case
   alias GlobalChild.Test.Server
+  use ExUnit.Case
+  import GlobalChild.TestTools
 
   test "run a single process on a three-nodes cluster" do
     nodes = LocalCluster.start_nodes(:simple_run, 3)
@@ -19,6 +20,8 @@ defmodule GlobalChild.NetSplitTest do
     [pid1, pid2, pid3] = for n <- nodes, do: get_pid_from(n, name)
     assert pid1 == pid2
     assert pid1 == pid3
+
+    LocalCluster.stop_nodes(nodes)
   end
 
   test "global child will run on both nodes if two nodes are disconnected" do
@@ -67,6 +70,8 @@ defmodule GlobalChild.NetSplitTest do
     info1 = rpc(node1, Server, :get_info, [name])
     info2 = rpc(node2, Server, :get_info, [name])
     assert info1 == info2
+
+    LocalCluster.stop_nodes(nodes)
   end
 
   test "large netsplit healing still results in a single child" do
@@ -76,7 +81,7 @@ defmodule GlobalChild.NetSplitTest do
 
     in_left = hd(left_nodes)
     in_right = hd(right_nodes)
-    gname = __MODULE__.Split
+    gname = __MODULE__.LargeSplit
     name = {:global, gname}
     gc_spec = {GlobalChild, child: {Server, name: name}}
 
@@ -107,37 +112,7 @@ defmodule GlobalChild.NetSplitTest do
     info1 = rpc(in_left, Server, :get_info, [name])
     info2 = rpc(in_right, Server, :get_info, [name])
     assert info1 == info2
-  end
 
-  defp start_supervised_on_nodes(nodes, gc_spec) do
-    for n <- nodes do
-      {:ok, sup} = rpc(n, Supervisor, :start_link, [[gc_spec], [strategy: :one_for_one]])
-      sup
-    end
-  end
-
-  defp rpc(node, m, f, a) do
-    :rpc.block_call(node, m, f, a)
-  end
-
-  defp rpc_all(nodes, m, f, a) do
-    Enum.map(nodes, &rpc(&1, m, f, a))
-  end
-
-  defp get_node_from(node, name) do
-    case rpc(node, Server, :get_info, [name]) do
-      {_, n} -> n
-    end
-  end
-
-  defp get_pid_from(node, name) do
-    case rpc(node, Server, :get_info, [name]) do
-      {pid, _} -> pid
-    end
-  end
-
-  defp heal_sync(nodes) do
-    Schism.heal(nodes)
-    assert Enum.all?(rpc_all(nodes, :global, :sync, []), &(&1 == :ok))
+    LocalCluster.stop_nodes(nodes)
   end
 end

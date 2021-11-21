@@ -20,6 +20,7 @@ defmodule GlobalChild do
   """
 
   defmodule S do
+    @moduledoc false
     @enforce_keys [:debug, :child_id, :child_spec, :current, :restart]
     defstruct @enforce_keys
   end
@@ -85,7 +86,7 @@ defmodule GlobalChild do
 
   @impl true
   def handle_info(
-        {:DOWN, ref, :process, _, reason} = msg,
+        {:DOWN, ref, :process, _, reason},
         %S{current: __monitor(ref: ref), restart: restart} = state
       ) do
     state = Map.put(state, :current, nil)
@@ -104,7 +105,7 @@ defmodule GlobalChild do
 
   def handle_info(
         {:EXIT, _pid, :"$global_child_resolve_conflict"},
-        %S{current: __actual(sup_pid: sup_pid, child_pid: child_pid), restart: restart} = state
+        %S{current: __actual(sup_pid: sup_pid), restart: restart} = state
       ) do
     maybe_log(state, :warn, "name conflict")
     :ok = Supervisor.stop(sup_pid, :shutdown)
@@ -121,10 +122,7 @@ defmodule GlobalChild do
     {:stop, reason, Map.put(state, :current, nil)}
   end
 
-  def handle_info(
-        {:EXIT, sup_pid, _},
-        %S{current: __actual(sup_pid: sup_pid, child_pid: child_pid)} = state
-      ) do
+  def handle_info({:EXIT, sup_pid, _}, %S{current: __actual(sup_pid: sup_pid)} = state) do
     # The supervisor exited. This is unexpected.
     {:stop, :global_child_supervisor_exit, Map.put(state, :current, nil)}
   end
@@ -153,7 +151,7 @@ defmodule GlobalChild do
   end
 
   @impl true
-  def terminate(reason, %S{current: __actual(sup_pid: sup_pid, child_pid: child_pid)} = state) do
+  def terminate(reason, %S{current: __actual(sup_pid: sup_pid)} = state) do
     maybe_log(state, :debug, "terminating with reason: #{inspect(reason)}")
     :ok = Supervisor.stop(sup_pid, reason)
     maybe_log(state, :warn, "stopped local global child")
@@ -224,7 +222,7 @@ defmodule GlobalChild do
     log(level, child_id, message)
   end
 
-  def maybe_log(%{debug: false}, _, _, _) do
+  def maybe_log(%{debug: false}, _, _) do
     :ok
   end
 
