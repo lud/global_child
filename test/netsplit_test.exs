@@ -6,7 +6,7 @@ defmodule GlobalChild.NetSplitTest do
     nodes = LocalCluster.start_nodes(:simple_run, 3)
 
     name = {:global, __MODULE__.Run}
-    gc_spec = {GlobalChild, debug: true, child: {Server, pingback: self(), name: name}}
+    gc_spec = {GlobalChild, child: {Server, pingback: self(), name: name}}
 
     # start the global child on all nodes
     start_supervised_on_nodes(nodes, gc_spec)
@@ -26,7 +26,7 @@ defmodule GlobalChild.NetSplitTest do
 
     gname = __MODULE__.Split
     name = {:global, gname}
-    gc_spec = {GlobalChild, debug: true, child: {Server, name: name}}
+    gc_spec = {GlobalChild, child: {Server, name: name}}
 
     # start the global child on all nodes
     start_supervised_on_nodes(nodes, gc_spec)
@@ -66,6 +66,48 @@ defmodule GlobalChild.NetSplitTest do
 
     info1 = rpc(node1, Server, :get_info, [name])
     info2 = rpc(node2, Server, :get_info, [name])
+    assert info1 == info2
+  end
+
+  test "large netsplit healing still results in a single child" do
+    nodes = LocalCluster.start_nodes(:netsplit, 10)
+
+    {left_nodes, right_nodes} = Enum.split(nodes, 4)
+
+    in_left = hd(left_nodes)
+    in_right = hd(right_nodes)
+    gname = __MODULE__.Split
+    name = {:global, gname}
+    gc_spec = {GlobalChild, child: {Server, name: name}}
+
+    start_supervised_on_nodes(nodes, gc_spec)
+
+    assert get_node_from(in_left, name) == get_node_from(in_right, name)
+
+    Schism.partition(left_nodes)
+    Process.sleep(100)
+
+    assert {pid1, left_winner} = rpc(in_left, Server, :get_info, [name])
+    assert {pid2, right_winner} = rpc(in_right, Server, :get_info, [name])
+    assert pid1 != pid2
+    assert left_winner != right_winner
+    assert pid1 == rpc(in_left, :global, :whereis_name, [gname])
+    assert pid2 == rpc(in_right, :global, :whereis_name, [gname])
+
+    Schism.heal(nodes)
+
+    assert Enum.all?(rpc_all(nodes, :global, :sync, []), &(&1 == :ok))
+
+    global_child = :global.whereis_name(gname)
+    assert global_child == rpc(in_left, :global, :whereis_name, [gname])
+    assert global_child == rpc(in_right, :global, :whereis_name, [gname])
+
+    found_1 = rpc(in_left, :global, :whereis_name, [gname])
+    found_2 = rpc(in_right, :global, :whereis_name, [gname])
+    assert found_1 == found_2
+
+    info1 = rpc(in_left, Server, :get_info, [name])
+    info2 = rpc(in_right, Server, :get_info, [name])
     assert info1 == info2
   end
 
