@@ -98,8 +98,9 @@ defmodule GlobalChild do
       {:transient, :shutdown} -> {:stop, reason, state}
       {:transient, {:shutdown, _}} -> {:stop, reason, state}
       {:temporary, _} -> {:stop, reason, state}
-      # Otherwise we try to take over
+      # Otherwise we would like to take over:
       # _ -> {:noreply, register(state)}
+      # But if we want to support :rest_for_one strategies
       _ -> {:stop, {:shutdown, reason}, state}
     end
   end
