@@ -99,7 +99,8 @@ defmodule GlobalChild do
       {:transient, {:shutdown, _}} -> {:stop, reason, state}
       {:temporary, _} -> {:stop, reason, state}
       # Otherwise we try to take over
-      _ -> {:noreply, register(state)}
+      # _ -> {:noreply, register(state)}
+      _ -> {:stop, {:shutdown, reason}, state}
     end
   end
 
